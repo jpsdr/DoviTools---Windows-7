@@ -1,4 +1,4 @@
-use std::io::{stdout, BufRead, BufReader, BufWriter, Write};
+use std::io::{stdout, BufWriter, Write};
 use std::path::PathBuf;
 use std::{fs::File, path::Path};
 
@@ -6,12 +6,12 @@ use anyhow::{bail, Result};
 use indicatif::ProgressBar;
 
 use hevc_parser::hevc::{NALUnit, NAL_SEI_PREFIX, NAL_UNSPEC62, NAL_UNSPEC63};
-use hevc_parser::io::{processor, IoFormat, IoProcessor};
+use hevc_parser::io::{processor, IoFormat, IoProcessor, StartCodePreset};
 use hevc_parser::HevcParser;
 use processor::{HevcProcessor, HevcProcessorOpts};
 
 use super::hdr10plus_utils::prefix_sei_removed_hdr10plus_nalu;
-use super::{convert_encoded_from_opts, CliOptions, WriteStartCodePreset};
+use super::{convert_encoded_from_opts, CliOptions};
 
 pub struct DoviProcessor {
     input: PathBuf,
@@ -123,15 +123,13 @@ impl DoviProcessor {
         };
         let mut processor = HevcProcessor::new(format.clone(), processor_opts, chunk_size);
 
-        let stdin = std::io::stdin();
-        let mut reader = Box::new(stdin.lock()) as Box<dyn BufRead>;
+        let file_path = if let IoFormat::RawStdin = format {
+            None
+        } else {
+            Some(self.input.clone())
+        };
 
-        if let IoFormat::Raw = format {
-            let file = File::open(&self.input)?;
-            reader = Box::new(BufReader::with_capacity(100_000, file));
-        }
-
-        processor.process_io(&mut reader, self)
+        processor.process_file(self, file_path)
     }
 
     pub fn write_nals(&mut self, chunk: &[u8], nals: &[NALUnit]) -> Result<()> {
@@ -193,7 +191,7 @@ impl DoviProcessor {
                     NALUnit::write_with_preset(
                         sl_writer,
                         &modified_data,
-                        self.options.start_code.into(),
+                        self.options.start_code,
                         nal.nal_type,
                         first_nal_of_frame,
                     )?;
@@ -204,7 +202,7 @@ impl DoviProcessor {
                 NALUnit::write_with_preset(
                     sl_writer,
                     final_chunk_data,
-                    self.options.start_code.into(),
+                    self.options.start_code,
                     nal.nal_type,
                     first_nal_of_frame,
                 )?;
@@ -219,7 +217,7 @@ impl DoviProcessor {
                         NALUnit::write_with_preset(
                             el_writer,
                             &chunk[nal.start + 2..nal.end],
-                            WriteStartCodePreset::Four.into(),
+                            StartCodePreset::Four,
                             nal.nal_type,
                             false,
                         )?;
@@ -246,7 +244,7 @@ impl DoviProcessor {
                             NALUnit::write_with_preset(
                                 el_writer,
                                 &modified_data,
-                                self.options.start_code.into(),
+                                self.options.start_code,
                                 nal.nal_type,
                                 false,
                             )?;
@@ -263,7 +261,7 @@ impl DoviProcessor {
                         NALUnit::write_with_preset(
                             el_writer,
                             rpu_data,
-                            self.options.start_code.into(),
+                            self.options.start_code,
                             nal.nal_type,
                             false,
                         )?;
@@ -274,7 +272,7 @@ impl DoviProcessor {
                         NALUnit::write_with_preset(
                             bl_writer,
                             final_chunk_data,
-                            self.options.start_code.into(),
+                            self.options.start_code,
                             nal.nal_type,
                             first_nal_of_frame,
                         )?;
@@ -336,7 +334,7 @@ impl DoviProcessor {
                 NALUnit::write_with_preset(
                     rpu_writer,
                     &rpu.data,
-                    WriteStartCodePreset::Four.into(),
+                    StartCodePreset::Four,
                     NAL_UNSPEC62,
                     true,
                 )?;
