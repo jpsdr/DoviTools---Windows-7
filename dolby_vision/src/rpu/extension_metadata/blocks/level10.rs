@@ -1,12 +1,12 @@
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use bitvec_helpers::{
     bitstream_io_reader::BsIoSliceReader, bitstream_io_writer::BitstreamIoWriter,
 };
 
 #[cfg(feature = "serde")]
-use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 
-use super::{level6::MAX_PQ_LUMINANCE, ColorPrimaries, ExtMetadataBlock, ExtMetadataBlockInfo};
+use super::{ColorPrimaries, ExtMetadataBlock, ExtMetadataBlockInfo, level6::MAX_PQ_LUMINANCE};
 
 pub const PRESET_TARGET_DISPLAYS: &[u8] = &[1, 16, 18, 21, 27, 28, 37, 38, 42, 48, 49];
 
@@ -42,22 +42,22 @@ impl ExtMetadataBlockLevel10 {
     pub(crate) fn parse(reader: &mut BsIoSliceReader, length: u64) -> Result<ExtMetadataBlock> {
         let mut block = Self {
             length,
-            target_display_index: reader.get_n(8)?,
-            target_max_pq: reader.get_n(12)?,
-            target_min_pq: reader.get_n(12)?,
-            target_primary_index: reader.get_n(8)?,
+            target_display_index: reader.read::<8, u8>()?,
+            target_max_pq: reader.read::<12, u16>()?,
+            target_min_pq: reader.read::<12, u16>()?,
+            target_primary_index: reader.read::<8, u8>()?,
             ..Default::default()
         };
 
         if length > 5 {
-            block.target_primary_red_x = reader.get_n(16)?;
-            block.target_primary_red_y = reader.get_n(16)?;
-            block.target_primary_green_x = reader.get_n(16)?;
-            block.target_primary_green_y = reader.get_n(16)?;
-            block.target_primary_blue_x = reader.get_n(16)?;
-            block.target_primary_blue_y = reader.get_n(16)?;
-            block.target_primary_white_x = reader.get_n(16)?;
-            block.target_primary_white_y = reader.get_n(16)?;
+            block.target_primary_red_x = reader.read::<16, u16>()?;
+            block.target_primary_red_y = reader.read::<16, u16>()?;
+            block.target_primary_green_x = reader.read::<16, u16>()?;
+            block.target_primary_green_y = reader.read::<16, u16>()?;
+            block.target_primary_blue_x = reader.read::<16, u16>()?;
+            block.target_primary_blue_y = reader.read::<16, u16>()?;
+            block.target_primary_white_x = reader.read::<16, u16>()?;
+            block.target_primary_white_y = reader.read::<16, u16>()?;
         }
 
         Ok(ExtMetadataBlock::Level10(block))
@@ -66,20 +66,20 @@ impl ExtMetadataBlockLevel10 {
     pub fn write(&self, writer: &mut BitstreamIoWriter) -> Result<()> {
         self.validate()?;
 
-        writer.write_n(&self.target_display_index, 8)?;
-        writer.write_n(&self.target_max_pq, 12)?;
-        writer.write_n(&self.target_min_pq, 12)?;
-        writer.write_n(&self.target_primary_index, 8)?;
+        writer.write::<8, u8>(self.target_display_index)?;
+        writer.write::<12, u16>(self.target_max_pq)?;
+        writer.write::<12, u16>(self.target_min_pq)?;
+        writer.write::<8, u8>(self.target_primary_index)?;
 
         if self.length > 5 {
-            writer.write_n(&self.target_primary_red_x, 16)?;
-            writer.write_n(&self.target_primary_red_y, 16)?;
-            writer.write_n(&self.target_primary_green_x, 16)?;
-            writer.write_n(&self.target_primary_green_y, 16)?;
-            writer.write_n(&self.target_primary_blue_x, 16)?;
-            writer.write_n(&self.target_primary_blue_y, 16)?;
-            writer.write_n(&self.target_primary_white_x, 16)?;
-            writer.write_n(&self.target_primary_white_y, 16)?;
+            writer.write::<16, u16>(self.target_primary_red_x)?;
+            writer.write::<16, u16>(self.target_primary_red_y)?;
+            writer.write::<16, u16>(self.target_primary_green_x)?;
+            writer.write::<16, u16>(self.target_primary_green_y)?;
+            writer.write::<16, u16>(self.target_primary_blue_x)?;
+            writer.write::<16, u16>(self.target_primary_blue_y)?;
+            writer.write::<16, u16>(self.target_primary_white_x)?;
+            writer.write::<16, u16>(self.target_primary_white_y)?;
         }
 
         Ok(())

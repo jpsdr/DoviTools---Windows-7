@@ -5,8 +5,9 @@ use std::path::PathBuf;
 use crate::commands::ExtractRpuArgs;
 
 use super::{
+    CliOptions, IoFormat,
     general_read_write::{self, DoviProcessorOptions},
-    input_from_either, CliOptions, IoFormat,
+    input_from_either,
 };
 use general_read_write::{DoviProcessor, DoviWriter};
 
@@ -49,11 +50,6 @@ impl RpuExtractor {
 
     fn process_input(&self, options: CliOptions) -> Result<()> {
         let pb = super::initialize_progress_bar(&self.format, &self.input)?;
-
-        if self.format == IoFormat::Matroska {
-            println!("Extractor: Matroska input is experimental!");
-        }
-
         self.extract_rpu_from_el(pb, options)
     }
 

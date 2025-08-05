@@ -1,8 +1,8 @@
-use anyhow::{bail, ensure, Result};
+use anyhow::{Result, bail, ensure};
 use hdr10plus::metadata::{PeakBrightnessSource, VariablePeakBrightness};
 use hdr10plus::metadata_json::MetadataJsonRoot;
 use std::fs::File;
-use std::io::{stdout, Write};
+use std::io::{Write, stdout};
 use std::path::{Path, PathBuf};
 
 use crate::commands::GenerateArgs;
@@ -10,7 +10,7 @@ use dolby_vision::rpu::extension_metadata::blocks::{
     ExtMetadataBlock, ExtMetadataBlockLevel1, ExtMetadataBlockLevel6,
 };
 use dolby_vision::rpu::generate::{GenerateConfig, GenerateProfile, ShotFrameEdit, VideoShot};
-use dolby_vision::utils::nits_to_pq;
+use dolby_vision::utils::nits_to_pq_12_bit;
 use dolby_vision::xml::{CmXmlParser, XmlParserOpts};
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,8 +212,8 @@ fn parse_hdr10plus_for_l1<P: AsRef<Path>>(
         let max_nits = frame_meta.peak_brightness_nits(peak_source).unwrap();
 
         let min_pq = 0;
-        let max_pq = (nits_to_pq(max_nits.round()) * 4095.0).round() as u16;
-        let avg_pq = (nits_to_pq(avg_nits.round()) * 4095.0).round() as u16;
+        let max_pq = nits_to_pq_12_bit(max_nits.round());
+        let avg_pq = nits_to_pq_12_bit(avg_nits.round());
 
         let mut shot = VideoShot {
             start: frame_no,

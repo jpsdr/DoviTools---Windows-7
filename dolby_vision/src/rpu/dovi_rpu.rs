@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, ensure, Result};
+use anyhow::{Result, anyhow, bail, ensure};
 use bitvec::prelude::{BitVec, Msb0};
 use bitvec_helpers::{
     bitstream_io_reader::BsIoSliceReader, bitstream_io_writer::BitstreamIoWriter,
@@ -14,13 +14,14 @@ use super::profiles::profile84::Profile84;
 use super::rpu_data_header::RpuDataHeader;
 use super::rpu_data_mapping::{DoviNlqMethod, RpuDataMapping};
 use super::rpu_data_nlq::{DoviELType, RpuDataNlq};
-use super::vdr_dm_data::{vdr_dm_data_payload, VdrDmData};
-use super::{compute_crc32, ConversionMode};
+use super::vdr_dm_data::{VdrDmData, vdr_dm_data_payload};
+use super::{ConversionMode, compute_crc32};
 
 use crate::av1::{
     av1_validated_trimmed_data, convert_av1_rpu_payload_to_regular,
     convert_regular_rpu_to_av1_payload,
 };
+use crate::rpu::extension_metadata::{CmV40DmData, DmData};
 use crate::utils::{
     add_start_code_emulation_prevention_3_byte, clear_start_code_emulation_prevention_3_byte,
 };
@@ -149,7 +150,7 @@ impl DoviRpu {
     fn read_rpu_data(bytes: &[u8]) -> Result<DoviRpu> {
         let mut reader = BsIoSliceReader::from_slice(bytes);
 
-        let rpu_prefix = reader.get_n(8)?;
+        let rpu_prefix = reader.read::<8, u8>()?;
         ensure!(rpu_prefix == 25, "rpu_nal_prefix should be 25");
 
         let mut header = RpuDataHeader::parse(&mut reader)?;
@@ -182,8 +183,8 @@ impl DoviRpu {
         };
 
         // rpu_alignment_zero_bit
-        while !reader.is_aligned() {
-            ensure!(!reader.get()?, "rpu_alignment_zero_bit != 0");
+        while !reader.byte_aligned() {
+            ensure!(!reader.read_bit()?, "rpu_alignment_zero_bit != 0");
         }
 
         // CRC32 is at the end, there can be more data in between
@@ -191,7 +192,7 @@ impl DoviRpu {
             let mut remaining: BitVec<u8, Msb0> = BitVec::new();
 
             while reader.available()? != CRC32_TERMINATOR_BITS {
-                remaining.push(reader.get()?);
+                remaining.push(reader.read_bit()?);
             }
 
             Some(remaining)
@@ -199,8 +200,8 @@ impl DoviRpu {
             None
         };
 
-        let rpu_data_crc32 = reader.get_n(32)?;
-        let last_byte: u8 = reader.get_n(8)?;
+        let rpu_data_crc32 = reader.read::<32, u32>()?;
+        let last_byte = reader.read::<8, u8>()?;
         ensure!(last_byte == FINAL_BYTE, "last byte should be 0x80");
 
         Ok(DoviRpu {
@@ -250,7 +251,7 @@ impl DoviRpu {
         self.validate()?;
 
         // RPU prefix
-        writer.write_n(&0x19, 8)?;
+        writer.write_const::<8, 0x19>()?;
 
         let header = &self.header;
         header.write_header(&mut writer)?;
@@ -270,8 +271,8 @@ impl DoviRpu {
         }
 
         if let Some(remaining) = &self.remaining {
-            for b in remaining {
-                writer.write(*b)?;
+            for b in remaining.iter().by_vals() {
+                writer.write_bit(b)?;
             }
         }
 
@@ -293,13 +294,13 @@ impl DoviRpu {
         }
 
         // Write crc32
-        writer.write_n(&computed_crc32, 32)?;
-        writer.write_n(&FINAL_BYTE, 8)?;
+        writer.write::<32, u32>(computed_crc32)?;
+        writer.write::<8, u8>(FINAL_BYTE)?;
 
         // Trailing bytes
         if self.trailing_zeroes > 0 {
             for _ in 0..self.trailing_zeroes {
-                writer.write_n(&0_u8, 8)?;
+                writer.write_const::<8, 0>()?;
             }
         }
 
@@ -574,6 +575,8 @@ impl DoviRpu {
         Ok(())
     }
 
+    /// Replaces metadata levels from `src_rpu`.
+    /// If the RPU doesn't have `cmv40_metadata`, the CM v4.0 levels are ignored and an error may be returned.
     pub fn replace_levels_from_rpu(&mut self, src_rpu: &Self, levels: &Vec<u8>) -> Result<()> {
         ensure!(!levels.is_empty(), "Must have levels to replace");
 
@@ -589,5 +592,30 @@ impl DoviRpu {
         }
 
         Ok(())
+    }
+
+    /// Same as `replace_levels_from_rpu` except `cmv40_metadata` is created if allowed.
+    /// Therefore allowing to copy CM v4.0 levels even if the original RPU was CM v2.9 only.
+    pub fn replace_levels_from_rpu_cmv40(
+        &mut self,
+        src_rpu: &Self,
+        levels: &Vec<u8>,
+        allow_cmv4_transfer: bool,
+    ) -> Result<()> {
+        if !allow_cmv4_transfer {
+            return self.replace_levels_from_rpu(src_rpu, levels);
+        }
+
+        let dm_data = self.vdr_dm_data.as_mut().zip(src_rpu.vdr_dm_data.as_ref());
+
+        if let Some((dst_vdr_dm_data, src_vdr_dm_data)) = dm_data {
+            if src_vdr_dm_data.cmv40_metadata.is_some() && dst_vdr_dm_data.cmv40_metadata.is_none()
+            {
+                dst_vdr_dm_data.cmv40_metadata =
+                    Some(DmData::V40(CmV40DmData::new_with_l254_402()));
+            }
+        }
+
+        self.replace_levels_from_rpu(src_rpu, levels)
     }
 }

@@ -1,14 +1,14 @@
 use std::borrow::Cow;
 use std::fs::File;
-use std::io::{stdout, BufWriter, Write};
+use std::io::{BufWriter, Write, stdout};
 use std::ops::Range;
 use std::path::PathBuf;
 
 use anyhow::Result;
 use dolby_vision::rpu::extension_metadata::blocks::{ExtMetadataBlock, ExtMetadataBlockLevel5};
 use itertools::Itertools;
-use serde::ser::SerializeSeq;
 use serde::Serializer;
+use serde::ser::SerializeSeq;
 
 use dolby_vision::rpu::utils::parse_rpu_file;
 use serde_json::json;
@@ -134,7 +134,7 @@ impl Exporter {
         let mut l5_edits = Vec::<(Range<usize>, usize)>::new();
 
         for (k, start_index) in l5_indices {
-            if !l5_presets.iter().any(|l5| *l5 == k) {
+            if !l5_presets.contains(&k) {
                 l5_presets.push(k);
             }
 

@@ -1,21 +1,23 @@
 use std::fs::File;
-use std::io::{stdout, Write};
+use std::io::{Write, stdout};
 use std::path::Path;
 use std::{collections::HashMap, path::PathBuf};
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 
 use dolby_vision::rpu::extension_metadata::blocks::{
-    ExtMetadataBlock, ExtMetadataBlockLevel11, ExtMetadataBlockLevel255, ExtMetadataBlockLevel5,
-    ExtMetadataBlockLevel6, ExtMetadataBlockLevel9,
+    ExtMetadataBlock, ExtMetadataBlockLevel5, ExtMetadataBlockLevel6, ExtMetadataBlockLevel9,
+    ExtMetadataBlockLevel11, ExtMetadataBlockLevel255,
 };
-use dolby_vision::rpu::extension_metadata::MasteringDisplayPrimaries;
+use dolby_vision::rpu::extension_metadata::{
+    CmV40DmData, MasteringDisplayPrimaries, WithExtMetadataBlocks,
+};
 use dolby_vision::rpu::generate::GenerateConfig;
 
 use dolby_vision::rpu::utils::parse_rpu_file;
 
-use super::{input_from_either, write_rpu_file, DoviRpu};
+use super::{DoviRpu, input_from_either, write_rpu_file};
 use crate::commands::EditorArgs;
 
 pub struct Editor {
@@ -66,6 +68,8 @@ pub struct EditConfig {
     source_rpu: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     rpu_levels: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    allow_cmv4_transfer: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
@@ -343,7 +347,7 @@ impl EditConfig {
             let source = data[meta.source].clone();
             data.splice(
                 meta.offset..meta.offset,
-                std::iter::repeat(source).take(meta.length),
+                std::iter::repeat_n(source, meta.length),
             );
         }
 
@@ -480,8 +484,13 @@ impl EditConfig {
             .as_ref()
             .expect("Levels to replace must be present");
 
+        let allow_cmv4_transfer = self.allow_cmv4_transfer.unwrap_or(false)
+            && levels
+                .iter()
+                .any(|l| CmV40DmData::ALLOWED_BLOCK_LEVELS.contains(l));
+
         for (dst_rpu, src_rpu) in zip_iter {
-            dst_rpu.replace_levels_from_rpu(src_rpu, levels)?;
+            dst_rpu.replace_levels_from_rpu_cmv40(src_rpu, levels, allow_cmv4_transfer)?;
         }
 
         Ok(())

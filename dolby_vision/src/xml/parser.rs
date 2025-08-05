@@ -1,4 +1,4 @@
-use anyhow::{bail, ensure, Result};
+use anyhow::{Result, bail, ensure};
 use roxmltree::{Document, Node};
 use std::cmp::min;
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ use std::path::Path;
 use crate::rpu::extension_metadata::{blocks::*, primaries};
 use crate::rpu::generate::{GenerateConfig, ShotFrameEdit, VideoShot};
 use crate::rpu::vdr_dm_data::CmVersion;
-use crate::utils::nits_to_pq;
+use crate::utils::nits_to_pq_12_bit;
 
 use level10::PRESET_TARGET_DISPLAYS;
 use primaries::ColorPrimaries;
@@ -74,11 +74,9 @@ impl CmXmlParser {
                 let (min_display_mastering_luminance, max_display_mastering_luminance) =
                     parser.parse_mastering_display_metadata(&video);
 
-                let source_min_pq = (nits_to_pq(min_display_mastering_luminance as f64 / 10000.0)
-                    * 4095.0)
-                    .round() as u16;
-                let source_max_pq =
-                    (nits_to_pq(max_display_mastering_luminance as f64) * 4095.0).round() as u16;
+                let source_min_pq =
+                    nits_to_pq_12_bit(min_display_mastering_luminance as f64 / 10000.0);
+                let source_max_pq = nits_to_pq_12_bit(max_display_mastering_luminance);
                 parser.config.source_min_pq = Some(source_min_pq);
                 parser.config.source_max_pq = Some(source_max_pq);
 
@@ -144,8 +142,10 @@ impl CmXmlParser {
             if rev >= 0x402 {
                 match rev {
                     0x402 | 0x500 | 0x510 => {}
-                    0x510.. => println!("Possibly unhandled new XML version {version_text} found! Please open an issue if you get anything wrong."),
-                    _ => bail!("invalid XML version {version_text} found!")
+                    0x510.. => println!(
+                        "Possibly unhandled new XML version {version_text} found! Please open an issue if you get anything wrong."
+                    ),
+                    _ => bail!("invalid XML version {version_text} found!"),
                 };
             } else {
                 match rev {
@@ -382,7 +382,7 @@ impl CmXmlParser {
     }
 
     fn parse_shots(&self, video: &Node) -> Result<Vec<VideoShot>> {
-        let shots = video
+        video
             .descendants()
             .filter(|e| e.has_tag_name("Shot"))
             .map(|n| {
@@ -438,9 +438,7 @@ impl CmXmlParser {
 
                 Ok(shot)
             })
-            .collect();
-
-        shots
+            .collect()
     }
 
     fn parse_shot_trims(&self, node: &Node) -> Result<Vec<ExtMetadataBlock>> {
@@ -542,11 +540,8 @@ impl CmXmlParser {
             let mut block = ExtMetadataBlockLevel10 {
                 length,
                 target_display_index: target.id.parse::<u8>().unwrap(),
-                target_max_pq: min(
-                    4095,
-                    (nits_to_pq(target.peak_nits.into()) * 4095.0).round() as u16,
-                ),
-                target_min_pq: min(4095, (nits_to_pq(target.min_nits) * 4095.0).round() as u16),
+                target_max_pq: min(4095, nits_to_pq_12_bit(target.peak_nits)),
+                target_min_pq: min(4095, nits_to_pq_12_bit(target.min_nits)),
                 target_primary_index: index,
                 ..Default::default()
             };

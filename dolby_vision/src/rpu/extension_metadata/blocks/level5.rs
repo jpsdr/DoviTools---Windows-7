@@ -1,4 +1,4 @@
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use bitvec_helpers::{
     bitstream_io_reader::BsIoSliceReader, bitstream_io_writer::BitstreamIoWriter,
 };
@@ -12,7 +12,7 @@ const MAX_RESOLUTION_13_BITS: u16 = 8191;
 
 /// Active area of the picture (letterbox, aspect ratio)
 #[repr(C)]
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct ExtMetadataBlockLevel5 {
     pub active_area_left_offset: u16,
@@ -24,20 +24,20 @@ pub struct ExtMetadataBlockLevel5 {
 impl ExtMetadataBlockLevel5 {
     pub(crate) fn parse(reader: &mut BsIoSliceReader) -> Result<ExtMetadataBlock> {
         Ok(ExtMetadataBlock::Level5(Self {
-            active_area_left_offset: reader.get_n(13)?,
-            active_area_right_offset: reader.get_n(13)?,
-            active_area_top_offset: reader.get_n(13)?,
-            active_area_bottom_offset: reader.get_n(13)?,
+            active_area_left_offset: reader.read::<13, u16>()?,
+            active_area_right_offset: reader.read::<13, u16>()?,
+            active_area_top_offset: reader.read::<13, u16>()?,
+            active_area_bottom_offset: reader.read::<13, u16>()?,
         }))
     }
 
     pub fn write(&self, writer: &mut BitstreamIoWriter) -> Result<()> {
         self.validate()?;
 
-        writer.write_n(&self.active_area_left_offset, 13)?;
-        writer.write_n(&self.active_area_right_offset, 13)?;
-        writer.write_n(&self.active_area_top_offset, 13)?;
-        writer.write_n(&self.active_area_bottom_offset, 13)?;
+        writer.write::<13, u16>(self.active_area_left_offset)?;
+        writer.write::<13, u16>(self.active_area_right_offset)?;
+        writer.write::<13, u16>(self.active_area_top_offset)?;
+        writer.write::<13, u16>(self.active_area_bottom_offset)?;
 
         Ok(())
     }

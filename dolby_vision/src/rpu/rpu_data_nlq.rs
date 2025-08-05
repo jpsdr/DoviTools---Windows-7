@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use bitvec_helpers::{
     bitstream_io_reader::BsIoSliceReader, bitstream_io_writer::BitstreamIoWriter,
 };
@@ -57,30 +57,30 @@ impl RpuDataNlq {
         for cmp in 0..NUM_COMPONENTS {
             // rpu_data_nlq_param
 
-            data.nlq_offset[cmp] = reader.get_n((header.el_bit_depth_minus8 + 8) as u32)?;
+            data.nlq_offset[cmp] = reader.read_var((header.el_bit_depth_minus8 + 8) as u32)?;
 
             if header.coefficient_data_type == 0 {
-                data.vdr_in_max_int[cmp] = reader.get_ue()?;
+                data.vdr_in_max_int[cmp] = reader.read_ue()?;
             }
 
-            data.vdr_in_max[cmp] = reader.get_n(coefficient_log2_denom_length)?;
+            data.vdr_in_max[cmp] = reader.read_var(coefficient_log2_denom_length)?;
 
             // NLQ_LINEAR_DZ
             if let Some(nlq_method_idc) = mapping.nlq_method_idc {
                 if nlq_method_idc == DoviNlqMethod::LinearDeadzone {
                     if header.coefficient_data_type == 0 {
-                        data.linear_deadzone_slope_int[cmp] = reader.get_ue()?;
+                        data.linear_deadzone_slope_int[cmp] = reader.read_ue()?;
                     }
 
                     data.linear_deadzone_slope[cmp] =
-                        reader.get_n(coefficient_log2_denom_length)?;
+                        reader.read_var(coefficient_log2_denom_length)?;
 
                     if header.coefficient_data_type == 0 {
-                        data.linear_deadzone_threshold_int[cmp] = reader.get_ue()?;
+                        data.linear_deadzone_threshold_int[cmp] = reader.read_ue()?;
                     }
 
                     data.linear_deadzone_threshold[cmp] =
-                        reader.get_n(coefficient_log2_denom_length)?;
+                        reader.read_var(coefficient_log2_denom_length)?;
                 }
             }
         }
@@ -113,36 +113,36 @@ impl RpuDataNlq {
         for cmp in 0..NUM_COMPONENTS {
             // rpu_data_nlq_param
 
-            writer.write_n(
-                &self.nlq_offset[cmp],
+            writer.write_var(
                 (header.el_bit_depth_minus8 + 8) as u32,
+                self.nlq_offset[cmp],
             )?;
 
             if header.coefficient_data_type == 0 {
-                writer.write_ue(&self.vdr_in_max_int[cmp])?;
+                writer.write_ue(self.vdr_in_max_int[cmp])?;
             }
 
-            writer.write_n(&self.vdr_in_max[cmp], coefficient_log2_denom_length)?;
+            writer.write_var(coefficient_log2_denom_length, self.vdr_in_max[cmp])?;
 
             if let Some(nlq_method_idc) = mapping.nlq_method_idc {
                 if nlq_method_idc == DoviNlqMethod::LinearDeadzone {
                     // NLQ_LINEAR_DZ
                     if header.coefficient_data_type == 0 {
-                        writer.write_ue(&self.linear_deadzone_slope_int[cmp])?;
+                        writer.write_ue(self.linear_deadzone_slope_int[cmp])?;
                     }
 
-                    writer.write_n(
-                        &self.linear_deadzone_slope[cmp],
+                    writer.write_var(
                         coefficient_log2_denom_length,
+                        self.linear_deadzone_slope[cmp],
                     )?;
 
                     if header.coefficient_data_type == 0 {
-                        writer.write_ue(&self.linear_deadzone_slope_int[cmp])?;
+                        writer.write_ue(self.linear_deadzone_threshold_int[cmp])?;
                     }
 
-                    writer.write_n(
-                        &self.linear_deadzone_threshold[cmp],
+                    writer.write_var(
                         coefficient_log2_denom_length,
+                        self.linear_deadzone_threshold[cmp],
                     )?;
                 }
             }
@@ -205,5 +205,35 @@ impl DoviELType {
 impl Display for DoviELType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+
+    use crate::rpu::{dovi_rpu::DoviRpu, generate::GenerateConfig};
+
+    #[test]
+    fn write_linear_dz_threshold() -> Result<()> {
+        let mut rpu = DoviRpu::profile81_config(&GenerateConfig::default())?;
+        rpu.convert_with_mode(1)?;
+
+        {
+            let nlq = rpu
+                .rpu_data_mapping
+                .as_mut()
+                .and_then(|rpu_data_mapping| rpu_data_mapping.nlq.as_mut())
+                .unwrap();
+            nlq.linear_deadzone_threshold_int = [1, 2, 3];
+        }
+
+        let out = rpu.write_rpu()?;
+        let rpu = DoviRpu::parse(&out)?;
+
+        let nlq = rpu.rpu_data_mapping.and_then(|e| e.nlq).unwrap();
+        assert_eq!(nlq.linear_deadzone_threshold_int, [1, 2, 3]);
+
+        Ok(())
     }
 }

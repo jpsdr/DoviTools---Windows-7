@@ -1,7 +1,7 @@
 #[cfg(feature = "serde")]
 use {
     bitvec::prelude::*,
-    serde::{ser::Serializer, Serialize},
+    serde::{Serialize, ser::Serializer},
 };
 
 pub const ST2084_Y_MAX: f64 = 10000.0;
@@ -31,6 +31,12 @@ pub fn nits_to_pq(nits: f64) -> f64 {
 
     ((ST2084_C1 + ST2084_C2 * y.powf(ST2084_M1)) / (1.0 + ST2084_C3 * y.powf(ST2084_M1)))
         .powf(ST2084_M2)
+}
+
+/// Helper function to calculate PQ codes from nits (cd/m2) values, as 12 bit integer
+#[inline(always)]
+pub fn nits_to_pq_12_bit<T: Into<f64>>(nits: T) -> u16 {
+    (nits_to_pq(nits.into()) * 4095.0).round() as u16
 }
 
 /// Copied from hevc_parser for convenience, and to avoid a dependency
@@ -69,16 +75,6 @@ pub fn add_start_code_emulation_prevention_3_byte(data: &mut Vec<u8>) {
 
         i += 1;
     }
-}
-
-/// Serializing a bitvec as a vec of bits
-#[cfg(feature = "serde")]
-pub(crate) fn bitvec_ser_bits<S: Serializer>(
-    bitvec: &BitVec<u8, Msb0>,
-    s: S,
-) -> Result<S::Ok, S::Error> {
-    let bits: Vec<u8> = bitvec.iter().map(|b| *b as u8).collect();
-    bits.serialize(s)
 }
 
 /// Serializing an optional bitvec as a vec of bits
