@@ -575,6 +575,25 @@ impl DoviRpu {
         self.rpu_data_mapping = Some(Profile84::rpu_data_mapping());
     }
 
+    /// Adds default CMv4.0 extension metadata (L3, L9, L11, L254) if not already present.
+    /// Returns Ok(true) if metadata was added, Ok(false) if CMv4.0 was already present.
+    pub fn add_cmv40_safe_default_metadata(&mut self) -> Result<bool> {
+        let ret = if let Some(vdr_dm_data) = self.vdr_dm_data.as_mut()
+            && vdr_dm_data.cmv40_metadata.is_none()
+        {
+            self.modified = true;
+            let _ = vdr_dm_data
+                .cmv40_metadata
+                .insert(DmData::V40(CmV40DmData::default_safe()));
+
+            true
+        } else {
+            false
+        };
+
+        Ok(ret)
+    }
+
     pub fn remove_cmv40_extension_metadata(&mut self) -> Result<()> {
         if let Some(vdr_dm_data) = self.vdr_dm_data.as_mut() {
             if vdr_dm_data.cmv40_metadata.is_some() {
