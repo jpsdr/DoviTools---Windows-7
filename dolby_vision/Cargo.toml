@@ -9,7 +9,7 @@ description = "Dolby Vision metadata parsing and writing"
 repository = "https://github.com/quietvoid/dovi_tool/tree/main/dolby_vision"
 
 [dependencies]
-bitvec_helpers = { version = "4.0.1", default-features = false, features = ["bitstream-io"] }
+bitvec_helpers = { version = "4.0.2", default-features = false, features = ["bitstream-io"] }
 anyhow = "1.0.102"
 bitvec = "1.0.1"
 crc = "3.4.0"
@@ -26,7 +26,7 @@ criterion = "0.8.2"
 [features]
 xml = ["dep:roxmltree"]
 serde = ["dep:serde", "dep:serde_json", "tinyvec/serde"]
-capi = ["libc"]
+capi = ["libc", "serde"]
 
 [package.metadata.docs.rs]
 all-features = true
